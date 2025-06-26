@@ -1,0 +1,5 @@
+Flask==3.0.3
+requests==2.32.3
+PyQt5==5.15.10
+# If you encounter issues with PyQt5, try a slightly older version or a specific wheel for your OS/Python version.
+# For pyinstaller to work reliably, it's often better to pin versions.

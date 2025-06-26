@@ -1,0 +1,4 @@
+build
+dist
+cicd-webhook-single/go.mod
+cicd-webhook-single/go.sum
