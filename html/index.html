@@ -39,6 +39,36 @@
             border-radius: 5px;
           "
         >
+          <strong>Windows Installation Steps:</strong><br />
+          Follow these steps to install and configure the CICD Tool on Windows:
+          <pre
+            style="
+              background-color: #eee;
+              padding: 10px;
+              border-radius: 3px;
+              overflow-x: auto;
+            "
+          ><code>1. Download the CICD Tool installer from the link above.
+2. Run the installer (mysetup.exe) and follow the prompts to install to C:\Program Files\GoTools.
+3. Add the tool to your system PATH:
+   - Right-click the Start button and select "System".
+   - Click "Advanced system settings" > "Environment Variables".
+   - Under "System variables", select "Path" and click "Edit...".
+   - Click "New" and add: C:\Program Files\GoTools
+   - Click "OK" to save.
+4. Open a Command Prompt and run:
+   cicd launch -p 8080</code></pre>
+        </div>
+        <div
+          style="
+            font-size: 0.9em;
+            margin-top: 5px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+          "
+        >
           <strong>Linux Installation Steps (CLI):</strong><br />
           Open your terminal and run these commands (requires sudo privileges):
           <pre
