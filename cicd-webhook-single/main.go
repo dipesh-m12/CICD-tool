@@ -3,6 +3,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json" // Use JSON for config
 	"fmt"
@@ -50,13 +51,18 @@ type Configuration struct {
 }
 
 // --- Global Constants and Variables ---
+const AppVersion = "1.1.0" // Set by developer
 const configFileName = "config.json"
 const webhookBaseURL = "/webhook"
 const statusURL = "/status"
 const defaultListenPort = 52606 // Fixed default port
+const logDirectoryName = "logs"
+const mainLogFileName = "cicd.log" // New: Name for the main application log
 
 var (
 	configPath    string
+	logPath       string // Path to the logs directory
+	mainLogFilePath string // New: Path to the main application log file
 	configOnce    sync.Once
 	currentConfig *Configuration
 	server        *http.Server
@@ -66,7 +72,7 @@ var (
 
 // --- Configuration Management Functions ---
 
-// initConfig ensures the config directory exists and determines the config file path.
+// initConfig ensures the config and log directories exist and determines file paths.
 func initConfig() {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -76,9 +82,14 @@ func initConfig() {
 
 	configDir := filepath.Join(homeDir, ".cicd-webhook")
 	configPath = filepath.Join(configDir, configFileName)
+	logPath = filepath.Join(configDir, logDirectoryName)     // Set webhook-specific log directory path
+	mainLogFilePath = filepath.Join(configDir, mainLogFileName) // Set main application log file path
 
 	if err := os.MkdirAll(configDir, 0700); err != nil {
 		fmt.Printf("Warning: Could not create config directory %s: %v. Errors might occur.\n", configDir, err)
+	}
+	if err := os.MkdirAll(logPath, 0700); err != nil {
+		fmt.Printf("Warning: Could not create webhook log directory %s: %v. Errors might occur.\n", logPath, err)
 	}
 }
 
@@ -123,6 +134,11 @@ func saveConfig(cfg *Configuration) error {
 		return fmt.Errorf("failed to write config file %s: %w", configPath, err)
 	}
 	return nil
+}
+
+// getWebhookLogFilePath returns the full path for a webhook's log file.
+func getWebhookLogFilePath(webhookID string) string {
+	return filepath.Join(logPath, fmt.Sprintf("webhook_%s.log", webhookID))
 }
 
 // --- Email Sending Function ---
@@ -203,7 +219,29 @@ func startServer(port int, conf *Configuration) {
 		}
 		paramDisplay = strings.TrimSpace(paramDisplay)
 
-		go func(wh Webhook, scriptEnv []string) {
+		// Execute script in a goroutine
+		go func(wh Webhook, scriptEnv []string, requestBody string, remoteAddr string, paramDisplay string) {
+			logFilePath := getWebhookLogFilePath(wh.ID)
+			logFile, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				log.Printf("Error opening webhook log file for '%s': %v\n", wh.Name, err)
+				// Proceed without logging to file if there's an error
+			}
+			defer func() {
+				if logFile != nil {
+					logFile.Close()
+				}
+			}()
+
+			// Log execution start to the webhook-specific log file
+			logMessage := fmt.Sprintf("\n--- Webhook Triggered: %s (%s) at %s ---\n", wh.Name, wh.ID, time.Now().Format(time.RFC3339))
+			logMessage += fmt.Sprintf("Remote Address: %s\n", remoteAddr)
+			logMessage += fmt.Sprintf("Request Body: %s\n", requestBody)
+			logMessage += fmt.Sprintf("Script Parameters (Environment Vars): %s\n", paramDisplay)
+			logMessage += "--- Script Output ---\n"
+			if logFile != nil {
+				logFile.WriteString(logMessage)
+			}
 			log.Printf("Executing script for webhook '%s'. Parameters available as environment variables: %s\n", wh.Name, paramDisplay)
 
 			shell := "bash"
@@ -216,10 +254,21 @@ func startServer(port int, conf *Configuration) {
 			execCmd := exec.Command(shell, shellArg, wh.Script)
 			execCmd.Env = scriptEnv
 
-			output, err := execCmd.CombinedOutput()
-			scriptOutput := string(output)
+			// Use a buffer to capture output for email, and tee it to the log file
+			var scriptOutputBuffer bytes.Buffer
+			multiWriter := io.MultiWriter(&scriptOutputBuffer) // Start with buffer
+			if logFile != nil {
+				multiWriter = io.MultiWriter(&scriptOutputBuffer, logFile) // Add log file if available
+			}
+
+			execCmd.Stdout = multiWriter
+			execCmd.Stderr = multiWriter
+
 			status := "SUCCESS"
 			errorMessage := ""
+
+			err = execCmd.Run() // Use Run() instead of CombinedOutput() when setting Stdout/Stderr
+			scriptOutput := scriptOutputBuffer.String()
 
 			if err != nil {
 				status = "FAILED"
@@ -227,6 +276,15 @@ func startServer(port int, conf *Configuration) {
 				log.Printf("Script execution for '%s' FAILED: %v\nOutput:\n%s\n", wh.Name, err, scriptOutput)
 			} else {
 				log.Printf("Script execution for '%s' SUCCESS.\nOutput:\n%s\n", wh.Name, scriptOutput)
+			}
+
+			// Add a separator and status to the log file after execution
+			if logFile != nil {
+				logFile.WriteString(fmt.Sprintf("\n--- Script Finished: %s ---\n", status))
+				if errorMessage != "" {
+					logFile.WriteString(fmt.Sprintf("Error Details: %s\n", errorMessage))
+				}
+				logFile.WriteString(strings.Repeat("=", 60) + "\n\n")
 			}
 
 			if len(wh.Emails) > 0 {
@@ -239,8 +297,8 @@ func startServer(port int, conf *Configuration) {
 					"Script Parameters (Environment Vars):\n%s\n\n"+
 					"Script Output:\n%s\n\n"+
 					"%s",
-					wh.Name, wh.ID, status, time.Now().Format(time.RFC3339), r.RemoteAddr,
-					string(body), paramDisplay, scriptOutput, errorMessage)
+					wh.Name, wh.ID, status, time.Now().Format(time.RFC3339), remoteAddr,
+					requestBody, paramDisplay, scriptOutput, errorMessage)
 
 				if err := sendEmail(conf.Email, wh.Emails, emailSubject, emailBody); err != nil {
 					log.Printf("Error sending email for webhook '%s': %v\n", wh.Name, err)
@@ -248,7 +306,7 @@ func startServer(port int, conf *Configuration) {
 					log.Printf("Email notification sent for webhook '%s' successfully.\n", wh.Name)
 				}
 			}
-		}(*foundWebhook, envVars)
+		}(*foundWebhook, envVars, string(body), r.RemoteAddr, paramDisplay) // Pass request details
 
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "Webhook received and script execution initiated.")
@@ -284,6 +342,11 @@ func startServer(port int, conf *Configuration) {
 		fmt.Printf("Server status check: http://localhost:%d%s\n", port, statusURL)
 	}
 
+	fmt.Println("\n--- IMPORTANT: To run this server in the background: ---")
+	fmt.Println("  On Linux/macOS: nohup ./cicd start & (Output goes to nohup.out and/or cicd.log)")
+	fmt.Println("  On Windows (using cmd.exe): start /B cicd.exe start")
+	fmt.Println("--------------------------------------------------")
+
 	log.Printf("Server listening on %s\n", listenAddr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Server failed to start: %v", err)
@@ -311,9 +374,14 @@ func stopServer() {
 		server = nil
 	} else {
 		fmt.Println("No server instance found running in this process.")
-		fmt.Println("If the server was started in the background (e.g., with '&' on Linux/macOS or 'start /B' on Windows),")
-		fmt.Println("you will need to terminate its process manually (e.g., using 'taskkill /F /PID <PID>' on Windows or 'kill <PID>' on Linux/macOS).")
-		fmt.Println("You can find the PID using 'tasklist | findstr cicd.exe' on Windows or 'ps aux | grep cicd' on Linux/macOS.")
+		fmt.Println("\n--- To stop a background server process manually: ---")
+		fmt.Println("  1. Find the Process ID (PID):")
+		fmt.Println("     On Linux/macOS: ps aux | grep cicd | grep -v grep")
+		fmt.Println("     On Windows: tasklist | findstr /I \"cicd.exe\"")
+		fmt.Println("  2. Terminate the process using its PID:")
+		fmt.Println("     On Linux/macOS: kill <PID>")
+		fmt.Println("     On Windows: taskkill /F /PID <PID>")
+		fmt.Println("--------------------------------------------------")
 	}
 }
 
@@ -457,11 +525,11 @@ var listCmd = &cobra.Command{
 
 		fmt.Println("--- Configured Webhooks ---")
 		for _, wh := range conf.Webhooks {
-			fmt.Printf("ID:       %s\n", wh.ID)
-			fmt.Printf("Name:     %s\n", wh.Name)
+			fmt.Printf("ID:        %s\n", wh.ID)
+			fmt.Printf("Name:      %s\n", wh.Name)
 			hitURL := fmt.Sprintf("POST to http://<ip>:%d%s?id=%s", defaultListenPort, webhookBaseURL, wh.ID)
-			fmt.Printf("Hit URL:  %s\n", hitURL)
-			fmt.Printf("Emails:   %s\n", strings.Join(wh.Emails, ", "))
+			fmt.Printf("Hit URL:   %s\n", hitURL)
+			fmt.Printf("Emails:    %s\n", strings.Join(wh.Emails, ", "))
 			fmt.Printf("Script:\n%s\n", wh.Script)
 			fmt.Println(strings.Repeat("-", 40))
 		}
@@ -621,9 +689,11 @@ You can provide a partial ID or name. If multiple matches are found, you'll be p
 
 		// Exactly one match found
 		webhookToCopy := matches[0]
+		// Append a timestamp to the name for better uniqueness and clarity
+		newWebhookName := fmt.Sprintf("Copy of %s (%s)", webhookToCopy.Name, time.Now().Format("20060102_150405"))
 		newWebhook := Webhook{
 			ID:      uuid.New().String(),
-			Name:    "Copy of " + webhookToCopy.Name,
+			Name:    newWebhookName,
 			URLPath: webhookBaseURL,
 			Script:  webhookToCopy.Script,
 			Emails:  append([]string{}, webhookToCopy.Emails...),
@@ -759,6 +829,155 @@ to enable email notifications for webhooks.`,
 	},
 }
 
+var logsCmd = &cobra.Command{
+	Use:   "logs",
+	Short: "Manage webhook execution logs and main server logs",
+	Long:  `This command provides subcommands to view and manage webhook execution logs and the main application server log.`,
+}
+
+var logsListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List all webhook log files",
+	Long:  `Lists the log files for all configured webhooks.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		conf := loadConfig()
+		if len(conf.Webhooks) == 0 {
+			fmt.Println("No webhooks configured. No webhook log files to list.")
+			return
+		}
+
+		fmt.Println("--- Webhook Log Files ---")
+		foundLogs := false
+		for _, wh := range conf.Webhooks {
+			logFilePath := getWebhookLogFilePath(wh.ID)
+			if _, err := os.Stat(logFilePath); err == nil {
+				fmt.Printf("Webhook '%s' (ID: %s): %s\n", wh.Name, wh.ID, logFilePath)
+				foundLogs = true
+			}
+		}
+		if !foundLogs {
+			fmt.Println("No webhook log files found for configured webhooks yet. They will be created when webhooks are triggered.")
+		}
+		fmt.Println("-------------------------")
+	},
+}
+
+var logsShowCmd = &cobra.Command{
+	Use:   "show <partial_id_or_name>",
+	Short: "Show the content of a webhook's log file",
+	Long: `Displays the content of the log file for a specific webhook.
+You can provide a partial ID or name. If multiple matches are found, you'll be prompted to be more specific.`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		searchTerm := args[0]
+		conf := loadConfig()
+		matches := findWebhookByPartialID(searchTerm, conf)
+
+		if len(matches) == 0 {
+			fmt.Printf("No webhook found matching '%s'.\n", searchTerm)
+			return
+		}
+		if len(matches) > 1 {
+			fmt.Printf("Multiple webhooks found matching '%s':\n", searchTerm)
+			for _, m := range matches {
+				fmt.Printf("  - ID: %s, Name: %s\n", m.ID, m.Name)
+			}
+			fmt.Println("Please provide a more specific ID or name.")
+			return
+		}
+
+		webhookToView := matches[0]
+		logFilePath := getWebhookLogFilePath(webhookToView.ID)
+
+		fmt.Printf("--- Log for Webhook '%s' (ID: %s) ---\n", webhookToView.Name, webhookToView.ID)
+		data, err := os.ReadFile(logFilePath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				fmt.Printf("No log file found for this webhook at %s.\n", logFilePath)
+			} else {
+				fmt.Printf("Error reading log file %s: %v\n", logFilePath, err)
+			}
+			return
+		}
+		fmt.Println(string(data))
+		fmt.Println("-------------------------------------")
+	},
+}
+
+var logsFlushCmd = &cobra.Command{
+	Use:   "flush <partial_id_or_name>",
+	Short: "Clear the content of a webhook's log file",
+	Long: `Clears (empties) the log file for a specific webhook.
+You can provide a partial ID or name. If multiple matches are found, you'll be prompted to be more specific.`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		searchTerm := args[0]
+		conf := loadConfig()
+		matches := findWebhookByPartialID(searchTerm, conf)
+
+		if len(matches) == 0 {
+			fmt.Printf("No webhook found matching '%s'.\n", searchTerm)
+			return
+		}
+		if len(matches) > 1 {
+			fmt.Printf("Multiple webhooks found matching '%s':\n", searchTerm)
+			for _, m := range matches {
+				fmt.Printf("  - ID: %s, Name: %s\n", m.ID, m.Name)
+			}
+			fmt.Println("Please provide a more specific ID or name.")
+			return
+		}
+
+		webhookToFlush := matches[0]
+		logFilePath := getWebhookLogFilePath(webhookToFlush.ID)
+
+		// Create an empty file, effectively clearing it
+		file, err := os.Create(logFilePath)
+		if err != nil {
+			fmt.Printf("Error flushing log file %s: %v\n", logFilePath, err)
+			return
+		}
+		file.Close()
+		fmt.Printf("Log file for webhook '%s' (ID: %s) flushed successfully.\n", webhookToFlush.Name, webhookToFlush.ID)
+	},
+}
+
+var logsServerCmd = &cobra.Command{
+	Use:   "server",
+	Short: "Show the content of the main application log file",
+	Long:  `Displays the content of the 'cicd.log' file, which contains general messages from the webhook server (startup, shutdown, etc.).`,
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("--- Main Application Log (%s) ---\n", mainLogFileName)
+		data, err := os.ReadFile(mainLogFilePath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				fmt.Printf("No main application log file found at %s. It will be created when the server starts.\n", mainLogFilePath)
+			} else {
+				fmt.Printf("Error reading main application log file %s: %v\n", mainLogFilePath, err)
+			}
+			return
+		}
+		fmt.Println(string(data))
+		fmt.Println("---------------------------------")
+	},
+}
+
+var logsFlushServerCmd = &cobra.Command{
+	Use:   "flush-server",
+	Short: "Clear the content of the main application log file",
+	Long:  `Clears (empties) the 'cicd.log' file, which contains general messages from the webhook server.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		// Create an empty file, effectively clearing it
+		file, err := os.Create(mainLogFilePath)
+		if err != nil {
+			fmt.Printf("Error flushing main application log file %s: %v\n", mainLogFilePath, err)
+			return
+		}
+		file.Close()
+		fmt.Printf("Main application log file (%s) flushed successfully.\n", mainLogFileName)
+	},
+}
+
 // startServerRunner is a common function for start and launch commands
 func startServerRunner(cmd *cobra.Command, args []string) {
 	conf := loadConfig()
@@ -776,6 +995,7 @@ func startServerRunner(cmd *cobra.Command, args []string) {
 		}
 	} else {
 		portToUse = defaultListenPort
+		// Check if default port is free, if not, try to find a free one.
 		listener, err := net.Listen("tcp", fmt.Sprintf(":%d", portToUse))
 		if err != nil {
 			log.Printf("Default port %d is in use. Trying to find a free port...", portToUse)
@@ -785,38 +1005,55 @@ func startServerRunner(cmd *cobra.Command, args []string) {
 			}
 			portToUse = p
 		} else {
-			listener.Close()
+			listener.Close() // Close the listener immediately after checking
 		}
 	}
 
 	fmt.Printf("Starting webhook server on port %d...\n", portToUse)
 	go startServer(portToUse, conf)
 
+	// Keep the main goroutine alive
 	select {}
 }
 
 var startServerCmd = &cobra.Command{
 	Use:   "start",
-	Short: "Start the webhook server",
+	Short: "Start the webhook server in foreground or background",
 	Long: fmt.Sprintf(`Starts the HTTP server to listen for incoming webhook requests.
-Defaults to port %d. You can specify a different port using the -p flag.`, defaultListenPort),
+Defaults to port %d. You can specify a different port using the -p flag.
+
+By default, the server runs in the foreground. To run in the background:
+  On Linux/macOS: nohup ./cicd start &
+  On Windows (using cmd.exe): start /B cicd.exe start
+
+All application-level logs (startup, shutdown, general errors) will be written
+to %s.
+`, defaultListenPort, mainLogFilePath),
 	Run: startServerRunner,
 }
 
 var launchCmd = &cobra.Command{
 	Use:   "launch",
-	Short: "Launch the webhook server with a splash screen",
+	Short: "Launch the webhook server with a splash screen in foreground or background",
 	Long: fmt.Sprintf(`Launches the HTTP server, similar to 'cicd start', but displays a cool ASCII art splash screen.
-Defaults to port %d. You can specify a different port using the -p flag.`, defaultListenPort),
+Defaults to port %d. You can specify a different port using the -p flag.
+
+By default, the server runs in the foreground. To run in the background:
+  On Linux/macOS: nohup ./cicd launch & (Splash screen output will go to nohup.out or %s)
+  On Windows (using cmd.exe): start /B cicd.exe launch
+
+All application-level logs (startup, shutdown, general errors) will be written
+to %s.
+`, defaultListenPort, mainLogFilePath, mainLogFilePath),
 	Run: func(cmd *cobra.Command, args []string) {
 		// Enhanced ASCII Art for CICD with shadows and 3D effect
 		fmt.Println(" ")
-		fmt.Println("      ██████╗ ██╗ ██████╗ ██████╗ ")
-		fmt.Println("     ██╔════╝███║██╔════╝██╔═══██╗")
-		fmt.Println("     ██║     ╚██║██║     ██║   ██║")
-		fmt.Println("     ██║      ██║██║     ██║   ██║")
-		fmt.Println("     ╚██████╗ ██║╚██████╗╚██████╔╝")
-		fmt.Println("      ╚═════╝ ╚═╝ ╚═════╝ ╚═════╝ ")
+		fmt.Println("     ██████╗ ██╗ ██████╗ ██████╗ ")
+		fmt.Println("    ██╔════╝███║██╔════╝ ██╔═══██╗")
+		fmt.Println("    ██║    ╚██║██║       ██║   ██║")
+		fmt.Println("    ██║     ██║██║       ██║   ██║")
+		fmt.Println("    ╚██████╗ ██║╚██████╗╚██████╔╝")
+		fmt.Println("     ╚═════╝ ╚═╝ ╚═════╝ ╚═════╝ ")
 		fmt.Println("     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░ ")
 		fmt.Println(" ")
 		fmt.Println("      ░█▀▀░█▀█░█▀▄░█▀▀░█▀▀░▀█▀░█▀▀")
@@ -825,7 +1062,7 @@ Defaults to port %d. You can specify a different port using the -p flag.`, defau
 		fmt.Println(" ")
 		fmt.Println("      Webhook Server - 🚀 Launched! 🚀")
 		fmt.Println(" ")
-		fmt.Println("                          -PulpBeater")
+		fmt.Println("                -PulpBeater")
 		fmt.Println(" ")
 		startServerRunner(cmd, args) // Call the common server start logic
 	},
@@ -835,24 +1072,44 @@ var stopServerCmd = &cobra.Command{
 	Use:   "stop",
 	Short: "Stop the webhook server (if running in current process)",
 	Long: `Attempts to gracefully stop the webhook server if it was started by this process.
-Note: This command will only work if the server was started in the same terminal session
-and the process ID matches. If the server was started as a background process (e.g., using '&' or 'start /B'),
-this command will not terminate it. You'll need to manually terminate the background process.`,
+If the server was started as a background process (e.g., using 'nohup' or 'start /B'),
+this command will not terminate it directly. You'll need to manually terminate the background process:
+
+  1. Find the Process ID (PID):
+     On Linux/macOS: ps aux | grep cicd | grep -v grep
+     On Windows: tasklist | findstr /I "cicd.exe"
+  2. Terminate the process using its PID:
+     On Linux/macOS: kill <PID>
+     On Windows: taskkill /F /PID <PID>`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if server != nil {
 			stopServer()
 			fmt.Println("Server stop command issued. Check logs for confirmation.")
 		} else {
 			fmt.Println("No server instance found running in this process.")
-			fmt.Println("If the server was started in the background (e.g., with '&' on Linux/macOS or 'start /B' on Windows),")
-			fmt.Println("you will need to terminate its process manually (e.g., using 'taskkill /F /PID <PID>' on Windows or 'kill <PID>' on Linux/macOS).")
-			fmt.Println("You can find the PID using 'tasklist | findstr cicd.exe' on Windows or 'ps aux | grep cicd' on Linux/macOS.")
+			fmt.Println("\n--- To stop a background server process manually: ---")
+			fmt.Println("  1. Find the Process ID (PID):")
+			fmt.Println("     On Linux/macOS: ps aux | grep cicd | grep -v grep")
+			fmt.Println("     On Windows: tasklist | findstr /I \"cicd.exe\"")
+			fmt.Println("  2. Terminate the process using its PID:")
+			fmt.Println("     On Linux/macOS: kill <PID>")
+			fmt.Println("     On Windows: taskkill /F /PID <PID>")
+			fmt.Println("--------------------------------------------------")
 		}
 	},
 }
 
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Display the application version",
+	Long:  `Displays the current version of the CI/CD webhook tool.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("CI/CD Webhook Tool Version: %s\n", AppVersion)
+	},
+}
+
 func init() {
-	initConfig() // Initialize config path on startup
+	initConfig() // Initialize config and log paths on startup
 
 	rootCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(listCmd)
@@ -864,6 +1121,13 @@ func init() {
 	rootCmd.AddCommand(configCmd)
 	configCmd.AddCommand(configEmailCmd)
 
+	rootCmd.AddCommand(logsCmd) // Add the new logs command
+	logsCmd.AddCommand(logsListCmd)
+	logsCmd.AddCommand(logsShowCmd)
+	logsCmd.AddCommand(logsFlushCmd)
+	logsCmd.AddCommand(logsServerCmd)     // Add new subcommand for main log
+	logsCmd.AddCommand(logsFlushServerCmd) // Add new subcommand for flushing main log
+
 	rootCmd.AddCommand(startServerCmd)
 	startServerCmd.Flags().IntVarP(&serverPort, "port", "p", defaultListenPort, "Port to run the webhook server on")
 
@@ -871,9 +1135,22 @@ func init() {
 	launchCmd.Flags().IntVarP(&serverPort, "port", "p", defaultListenPort, "Port to run the webhook server on") // Add flags for launch too
 
 	rootCmd.AddCommand(stopServerCmd)
+	rootCmd.AddCommand(versionCmd) // Add the new version command
 }
 
 func main() {
+	// Setup logging to a file and stderr/stdout
+	logFile, err := os.OpenFile(mainLogFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatalf("Failed to open main log file %s: %v", mainLogFilePath, err)
+	}
+	defer logFile.Close()
+
+	// Direct log output to both console and the main log file
+	mw := io.MultiWriter(os.Stderr, logFile)
+	log.SetOutput(mw)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile) // Add file/line info to logs
+
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatalf("Error executing command: %v", err)
 		os.Exit(1)
