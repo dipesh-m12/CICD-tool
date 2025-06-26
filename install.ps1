@@ -1,6 +1,7 @@
 # install.ps1
 # This script downloads the cicd.exe from a specified URL,
 # moves it to a user's GoTools directory, and adds that directory to the PATH.
+# It can be used for both initial installation and for updating an existing cicd.exe.
 
 # --- Configuration ---
 # The direct download URL for your cicd.exe from GitHub Releases
@@ -40,6 +41,7 @@ Write-Host "Moving $appName to $finalTargetPath..."
 try {
     # Remove existing file if it exists to ensure clean move/overwrite
     if (Test-Path $finalTargetPath) {
+        Write-Host "Existing '$appName' found. Replacing it with the new version."
         Remove-Item -Path $finalTargetPath -Force | Out-Null
     }
     Move-Item -Path $downloadedFilePath -Destination $finalTargetPath -Force
