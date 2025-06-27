@@ -192,6 +192,49 @@ panty --version</code
           </p>
         </div>
       </li>
+
+      <li>
+        <strong>CDN Server</strong><br />
+        <a href="https://github.com/dipesh-m12/CDN.git">View on GitHub</a><br />
+        <div
+          style="
+            font-size: 0.9em;
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            overflow-x: auto; /* Ensure horizontal scroll for long lines */
+          "
+        >
+          <p style="margin-bottom: 5px">
+            A custom CDN server designed to provide free CDN tiers for services
+            like Firebase and others that don't offer them natively. Key
+            features and usage:
+          </p>
+          <pre
+            style="
+              background-color: #eee;
+              padding: 10px;
+              border-radius: 3px;
+              overflow-x: auto;
+              white-space: pre-wrap;
+              word-wrap: break-word;
+            "
+          ><code
+            >Features: In-memory Caching | Configurable Cache Duration | Configurable Max Cache Size | Automatic Content-Type Detection | Local File Serving | External Content Proxying
+
+Usage:
+  1. Navigate to the project directory.
+  2. Install dependencies: npm install (assuming Node.js project)
+  3. Start the server: node server.js (or npm start if configured)
+
+Commands (after server is running):
+  - Access local files: http://localhost:3000/filename.ext
+  - Access external content: http://localhost:3000/proxy?url=https://example.com/image.jpg</code
+          ></pre>
+        </div>
+      </li>
     </ul>
   </body>
 </html>
