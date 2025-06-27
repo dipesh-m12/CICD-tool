@@ -18,7 +18,7 @@
     </p>
 
     <h2>Projects</h2>
-    <ul>
+    <ul style="display: flex; flex-direction: column; gap: 20px">
       <li>
         <strong>CICD Tool</strong><br />
         <a
@@ -69,13 +69,82 @@
               border-radius: 3px;
               overflow-x: auto;
             "
-          ><code>curl -fL "https://github.com/dipesh-m12/CICD-tool/releases/download/cicd-linux-amd64/cicd" -o /tmp/cicd_tool_linux
+          ><code
+            >curl -fL "https://github.com/dipesh-m12/CICD-tool/releases/download/cicd-linux-amd64/cicd" -o /tmp/cicd_tool_linux
 sudo mv /tmp/cicd_tool_linux /usr/local/bin/cicd
 sudo chmod +x /usr/local/bin/cicd
-cicd launch -p 8080</code></pre>
+cicd launch -p 8080</code
+          ></pre>
         </div>
         A tool designed to simplify CI/CD for production-grade integration and
         manipulation across thousands of servers.
+      </li>
+
+      <li>
+        <strong>panty CLI Tool</strong><br />
+        <a
+          href="https://github.com/dipesh-m12/Go-backend-and-tool/releases/download/linux_amd64/panty"
+          >Download panty (Linux)</a
+        ><br />
+        <a
+          href="https://github.com/dipesh-m12/Go-backend-and-tool/releases/download/Panty_win/mysetup.exe"
+          >Download panty (Windows Installer)</a
+        ><br />
+        <div
+          style="
+            font-size: 0.9em;
+            margin-top: 5px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+          "
+        >
+          <strong>Windows Installation Steps:</strong><br />
+          Download the Windows installer and run it. The tool will be added to
+          your system's PATH.
+          <pre
+            style="
+              background-color: #eee;
+              padding: 10px;
+              border-radius: 3px;
+              overflow-x: auto;
+            "
+          ><code>panty --version</code></pre>
+        </div>
+        <div
+          style="
+            font-size: 0.9em;
+            margin-top: 5px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+          "
+        >
+          <strong>Linux Installation Steps (CLI):</strong><br />
+          Open your terminal and run these commands (requires sudo privileges
+          for global install):
+          <pre
+            style="
+              background-color: #eee;
+              padding: 10px;
+              border-radius: 3px;
+              overflow-x: auto;
+            "
+          ><code
+            >curl -fL "https://github.com/dipesh-m12/Go-backend-and-tool/releases/download/linux_amd64/panty" -o /tmp/panty_tool_linux
+sudo mv /tmp/panty_tool_linux /usr/local/bin/panty
+sudo chmod +x /usr/local/bin/panty
+panty --version</code
+          ></pre>
+        </div>
+        <p style="margin-top: 10px">
+          `panty` is a powerful command-line interface (CLI) tool designed for
+          load and health testing of local servers. It supports concurrent
+          requests, customizable HTTP methods and data, and real-time health
+          monitoring with automatic termination on failure.
+        </p>
       </li>
     </ul>
   </body>
