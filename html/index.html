@@ -71,6 +71,101 @@
       </li>
 
       <li>
+        <strong>Nourish AI - Proactive Personal Health Assistant</strong><br />
+        <a href="https://nourish.mavinash.in">View Web App</a><br />
+        <a
+          href="https://drive.google.com/file/d/1RfDuDmW4LNZ_d_nufNICYsgkpmA3FWxp/view?usp=sharing"
+          >Download Android APK (1.1.0)</a
+        ><br />
+        <a
+          href="https://drive.google.com/file/d/1ueL7puwq-fI3IDmEP6-S3gndgazbxJj7/view?usp=sharing"
+          >View Demonstration Video (1.1)</a
+        ><br />
+        <a
+          href="https://excalidraw.com/#json=MRhTeT6iBPwCmC_xIaF9V,M-E36s2-5EE6-Qkd6qbCuA"
+          >View App Map (1.1)</a
+        ><br />
+        <a
+          href="https://drive.google.com/file/d/1vFf-FyQxtB3XP7W6_QuZMtOoixr2gUeU/view?usp=sharing"
+          >View Mind Map Walkthrough Video (Product Decisions)</a
+        ><br />
+        <a
+          href="https://drive.google.com/file/d/1qdICUPqpktAGBg6irmT6ldgt6-PqAzze/view?usp=sharing"
+          >View 1.0 Demonstration Video</a
+        ><br />
+        <a
+          href="https://excalidraw.com/#json=qCmSingB_UCbDygJGHdyF,xyXajJBgWpVWmEfoqatQyw"
+          >View 1.0 App Map</a
+        ><br />
+        <a href="https://github.com/dipesh-m12/nourish-ai">View on GitHub</a
+        ><br />
+        <div
+          style="
+            font-size: 0.9em;
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            overflow-x: auto;
+          "
+        >
+          <p style="margin-bottom: 5px">
+            Nourish AI is a health assistant that does the work instead of the
+            user. It learns your goal and why it matters to you, builds an AI
+            plan, and each day picks the one thing to do next, explains it in
+            your own words, and does it in one tap. Meals are logged from one
+            photo, lab reports turn into food tips and habits, and goals step up
+            or ease down as you progress. Every habit has its own interaction,
+            and a companion cat keeps you coming back.
+          </p>
+          <pre
+            style="
+              background-color: #eee;
+              padding: 10px;
+              border-radius: 3px;
+              overflow-x: auto;
+              white-space: pre-wrap;
+              word-wrap: break-word;
+            "
+          ><code>Features: AI Onboarding Plan (BMI, Calories, Macros) | One-Photo Meal Logging with Diet &amp; Allergy Checks | Daily PA Briefing (Rule-Based, 16 States) | AI Assistant Chat (Text + Voice) with Confirmable Action Cards | Lab Report PDF → Markers → Food Tips &amp; Challenges | Goals That Level Up / Ease Down | Weekly Check-In (This Week vs Last) | Forgiving Streaks (Rest Day) | Mochi Companion Cat, Garden &amp; Room | Share Cards | Mochi's Club Subscription (Razorpay Autopay) | Exercise Library (876 Exercises) | Burn Tracking | App Version Kill Switch</code></pre>
+          <pre
+            style="
+              background-color: #eee;
+              padding: 10px;
+              border-radius: 3px;
+              overflow-x: auto;
+              white-space: pre-wrap;
+              word-wrap: break-word;
+            "
+          ><code>Interactive Habits: Pour-a-Glass Water | Breathing Orb Timer | Live GPS Walk Map (Kalman-Smoothed Route, Tracks with App Closed, Offline Outbox) | Gym/Park Check-In (Place Search, Map Pin, 150 m Geofence Auto Check-In with App Closed) | Sleep Arc | Tally | One-Tap Checks | Health Connect Steps &amp; Sleep Sync</code></pre>
+          <pre
+            style="
+              background-color: #eee;
+              padding: 10px;
+              border-radius: 3px;
+              overflow-x: auto;
+              white-space: pre-wrap;
+              word-wrap: break-word;
+            "
+          ><code>Nudges at Scale: BullMQ Repeat Job Every 10 Min → One Evaluate Job per User | Pure Nudge Rules on the User's Local Clock (Luxon, Timezones) | Quiet Hours 22-07 | Max 12/Day, Once per Key per Day | Redis Lua Claims (No Double Sends Across Workers) | Exact-Minute Reminder Jobs | Batched Delivery Logs (2 s) | Expo Push with a Custom Chime Channel | Deep Links to the Exact Screen | Queue Behind a Port (Swappable Driver)
+
+AI &amp; Fallbacks: Gemini 3.5 Flash → Gemini Flash-Lite → Groq (gpt-oss-120b Text, Qwen Vision) → Rules/Templates | 15 s Timeout per Provider | Zod-Validated Structured Output | Numbers Always Computed in Code, Never by AI | Whisper Speech-to-Text with Gemini Audio Fallback | Prompt-Injection Guardrails | 94 Automated Tests
+
+Reliability &amp; Security: Redis Checkout Locks (Double-Tap Safe) | HMAC-Verified, Idempotent Razorpay Webhooks | 426 Kill Switch for Old Builds (Redis-Cached) | JWT Auth | Private S3 Bucket with Signed URLs | Magic-Byte Upload Checks | Rate Limits
+
+Deploy: AWS EC2 | Docker Compose (API, Worker, Redis) | Nginx Reverse Proxy | HTTPS via Let's Encrypt (Certbot, Auto-Renew) | Elastic IP | Neon Postgres + S3 Storage | Drizzle Migrations | Web on Vercel | Android Builds via Local EAS in WSL</code></pre>
+          <p style="margin-top: 5px">
+            Built with React Native and Expo (dev builds, Expo Router, React
+            Compiler, Reanimated, MapLibre, TanStack Query) for Android and web,
+            and a Node.js/Express 5 + TypeScript API with Drizzle ORM, Postgres,
+            Redis and a BullMQ worker. Runs on about $20 a month, with a
+            stateless API that scales by adding servers, no code changes.
+          </p>
+        </div>
+      </li>
+
+      <li>
         <strong>BeaterT - CLI-Based AI Agent</strong><br />
         <a href="https://github.com/dipesh-m12/BeaterT-cli-Agent-for-coding"
           >View on GitHub</a
